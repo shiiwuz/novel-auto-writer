@@ -1,0 +1,8 @@
+services:
+  novel:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs

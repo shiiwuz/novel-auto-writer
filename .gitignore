@@ -1,0 +1,13 @@
+# secrets
+.env
+*.env
+
+# local artifacts
+**/__pycache__/
+**/*.pyc
+
+# generated outputs/state
+projects/novel-writer-cli/data/
+projects/novel-writer-cli/outputs/
+projects/novel-writer-cli/**/*.db
+projects/novel-writer-cli/current_project.txt
