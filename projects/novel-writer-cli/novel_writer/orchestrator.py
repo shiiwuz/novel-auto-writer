@@ -10,10 +10,12 @@ from .prompts import (
     SYSTEM_ARCHITECT,
     SYSTEM_SCENE_PLANNER,
     SYSTEM_SCENE_WRITER,
+    SYSTEM_SCENE_WRITER_PAIR,
     SYSTEM_SUMMARIZER,
     user_prompt_for_architect,
     user_prompt_for_scene_plan,
     user_prompt_for_scene_write,
+    user_prompt_for_scene_write_pair,
     user_prompt_for_summary,
 )
 from .utils import Env, extract_first_json_object, now_utc_iso, write_json, write_text
@@ -113,51 +115,107 @@ def generate_chapter(
     scenes = plan_obj.get("scenes") or []
     write_json(out_dir / "scene_plan.json", plan_obj)
 
-    # 2) Write each scene as plain text via the writer model, then concatenate.
-    scene_texts: list[str] = []
-    prev_tail = prev_last_paragraph
+    def parse_scene_pair(text: str) -> tuple[str, str]:
+        a_tag = "<<<SCENE_A>>>"
+        b_tag = "<<<SCENE_B>>>"
+        ia = text.find(a_tag)
+        ib = text.find(b_tag)
+        if ia == -1 or ib == -1 or ib <= ia:
+            raise ValueError("Missing scene pair tags")
+        a = text[ia + len(a_tag) : ib].strip()
+        b = text[ib + len(b_tag) :].strip()
+        if not a or not b:
+            raise ValueError("Empty scene text in pair")
+        return a, b
 
-    for i, scene in enumerate(scenes, start=1):
-        scene_user = user_prompt_for_scene_write(
-            project=project_obj,
-            chapter=chapter_meta,
-            scene=scene,
-            prev_tail=prev_tail,
+    def expand_if_too_short(scene_text: str, *, scene_user: str, tag: str) -> str:
+        if len(scene_text) >= 500:
+            return scene_text
+        expand_user = (
+            scene_user
+            + "\n\n"
+            + f"补充要求：{tag} 太短了。请扩写到 >= 700 个中文字符，增加动作与对话细节，但不要复述上一段。"
         )
-        # Let the model have enough budget to avoid truncation; prompt still enforces tight output.
-        resp = client.chat_completions(
+        resp2 = client.chat_completions(
             model=env.novel_writer_model,
             system=SYSTEM_SCENE_WRITER,
-            user=scene_user,
+            user=expand_user,
             temperature=0.6,
             max_tokens=5000,
             extra={"max_completion_tokens": 5000},
         )
-        scene_text = client.get_text(resp).strip()
+        return client.get_text(resp2).strip()
 
-        # Basic richness guard: if the scene is too short, ask once to expand.
-        if len(scene_text) < 500:
-            expand_user = (
-                scene_user
-                + "\n\n"
-                + "补充要求：这段太短了。请扩写到 >= 700 个中文字符，增加动作与对话细节，但不要复述上一段。"
-            )
-            resp2 = client.chat_completions(
+    # 2) Write two scenes per writer call to speed up plot progression.
+    scene_texts: list[str] = []
+    prev_tail = prev_last_paragraph
+
+    if len(scenes) % 2 != 0:
+        raise RuntimeError("Scene plan must contain an even number of scenes")
+
+    for i in range(1, len(scenes) + 1, 2):
+        scene_a = scenes[i - 1]
+        scene_b = scenes[i]
+
+        pair_user = user_prompt_for_scene_write_pair(
+            project=project_obj,
+            chapter=chapter_meta,
+            scene_a=scene_a,
+            scene_b=scene_b,
+            prev_tail=prev_tail,
+        )
+
+        resp = client.chat_completions(
+            model=env.novel_writer_model,
+            system=SYSTEM_SCENE_WRITER_PAIR,
+            user=pair_user,
+            temperature=0.6,
+            max_tokens=5000,
+            extra={"max_completion_tokens": 5000},
+        )
+        pair_text = client.get_text(resp).strip()
+        write_text(out_dir / f"scene_pair_{i:02d}_{i+1:02d}_raw.txt", pair_text + "\n")
+
+        try:
+            text_a, text_b = parse_scene_pair(pair_text)
+        except Exception:
+            retry_user = pair_user + "\n\n重要：必须严格按 <<<SCENE_A>>> 与 <<<SCENE_B>>> 标签输出。除此之外不要输出任何文字。"
+            resp_r = client.chat_completions(
                 model=env.novel_writer_model,
-                system=SYSTEM_SCENE_WRITER,
-                user=expand_user,
-                temperature=0.6,
+                system=SYSTEM_SCENE_WRITER_PAIR,
+                user=retry_user,
+                temperature=0.4,
                 max_tokens=5000,
                 extra={"max_completion_tokens": 5000},
             )
-            scene_text = client.get_text(resp2).strip()
+            pair_text_r = client.get_text(resp_r).strip()
+            write_text(out_dir / f"scene_pair_{i:02d}_{i+1:02d}_retry_raw.txt", pair_text_r + "\n")
+            text_a, text_b = parse_scene_pair(pair_text_r)
 
-        # Persist raw scene output for debugging/repro.
-        write_text(out_dir / f"scene_{i:02d}.txt", scene_text + "\n")
+        # Richness guard per scene (fallback to single-scene expansion only if needed).
+        scene_a_user = user_prompt_for_scene_write(
+            project=project_obj,
+            chapter=chapter_meta,
+            scene=scene_a,
+            prev_tail=prev_tail,
+        )
+        text_a = expand_if_too_short(text_a, scene_user=scene_a_user, tag="scene_a")
 
-        # Update tail for continuity (short tail; for reference only).
-        prev_tail = scene_text[-220:] if len(scene_text) > 220 else scene_text
-        scene_texts.append(scene_text)
+        tail_a = text_a[-220:] if len(text_a) > 220 else text_a
+        scene_b_user = user_prompt_for_scene_write(
+            project=project_obj,
+            chapter=chapter_meta,
+            scene=scene_b,
+            prev_tail=tail_a,
+        )
+        text_b = expand_if_too_short(text_b, scene_user=scene_b_user, tag="scene_b")
+
+        write_text(out_dir / f"scene_{i:02d}.txt", text_a + "\n")
+        write_text(out_dir / f"scene_{i+1:02d}.txt", text_b + "\n")
+
+        prev_tail = text_b[-220:] if len(text_b) > 220 else text_b
+        scene_texts.append(text_a)
+        scene_texts.append(text_b)
 
     chapter_text = "\n\n".join([t for t in scene_texts if t]).strip() + "\n"
 

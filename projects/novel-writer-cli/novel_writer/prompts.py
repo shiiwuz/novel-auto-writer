@@ -98,6 +98,29 @@ SYSTEM_SCENE_WRITER = """你是一名职业小说作者，擅长把单个场景�
 """
 
 
+SYSTEM_SCENE_WRITER_PAIR = """你是一名职业小说作者。
+
+硬性规则：
+- 写作语言：中文。
+- 只输出正文内容本身：不要 JSON、不要 markdown、不要标题、不要解释。
+- 不要出现“作为AI/模型/助手”等自我指代。
+- 禁止复述/回顾上一段或上一场景发生了什么。
+
+本次要一次写 2 个场景（scene_a 和 scene_b），两个场景都必须各自完整走完小情节，并且 scene_b 必须自然承接 scene_a 的结尾（不许回顾）。
+
+严格输出格式（只允许这两段块）：
+<<<SCENE_A>>>
+(这里是 scene_a 正文)
+<<<SCENE_B>>>
+(这里是 scene_b 正文)
+
+每个场景要求：
+- 2-5 个自然段。
+- 至少包含：动作 + 对话 + 一个具体细节。
+- 推进链条：目标 -> 阻力 -> 动作 -> 结果 -> 钩子。
+"""
+
+
 SYSTEM_SUMMARIZER = """你是一名连载小说编辑，负责给章节写简洁但信息密度高的摘要与下一章钩子。
 
 硬性规则：
@@ -219,6 +242,24 @@ def user_prompt_for_scene_write(
         "[scene_card]" + "\n" + json_dumps_compact(scene) + "\n\n"
         "[continuity_tail_for_reference_only]" + "\n" + (prev_tail or "(无)") + "\n\n"
         "要求：不要复述 continuity_tail；直接从动作/对话开始；紧凑快节奏；末尾留钩子。"
+    )
+
+
+def user_prompt_for_scene_write_pair(
+    *,
+    project: dict,
+    chapter: dict,
+    scene_a: dict,
+    scene_b: dict,
+    prev_tail: str,
+) -> str:
+    return (
+        "请一次写 2 个场景（scene_a + scene_b）。严格按格式输出。\n\n"
+        "[project]" + "\n" + json_dumps_compact(_project_min(project)) + "\n\n"
+        "[chapter_requirements]" + "\n" + json_dumps_compact(chapter) + "\n\n"
+        "[scene_a_card]" + "\n" + json_dumps_compact(scene_a) + "\n\n"
+        "[scene_b_card]" + "\n" + json_dumps_compact(scene_b) + "\n\n"
+        "[continuity_tail_for_reference_only]" + "\n" + (prev_tail or "(无)")
     )
 
 
