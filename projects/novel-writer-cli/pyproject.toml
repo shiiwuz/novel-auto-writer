@@ -1,0 +1,14 @@
+[project]
+name = "novel-writer-cli"
+version = "0.1.0"
+description = "CLI-only (stdlib) Chinese novel generator + Telegraph publisher"
+requires-python = ">=3.10"
+
+# This project intentionally uses Python stdlib only.
+dependencies = []
+
+[project.scripts]
+novel-writer = "novel_writer.__main__:main"
+
+[tool.uv]
+# Keep uv configuration explicit even with zero third-party deps.

@@ -128,16 +128,20 @@ def generate_chapter(
             model=env.novel_writer_model,
             system=SYSTEM_SCENE_WRITER,
             user=scene_user,
-            temperature=0.8,
-            max_tokens=900,
-            extra={"max_completion_tokens": 900},
+            temperature=0.6,
+            max_tokens=650,
+            extra={"max_completion_tokens": 650},
         )
         scene_text = client.get_text(resp).strip()
+
+        # Keep output tight even if the model rambles.
+        scene_text = "\n\n".join([p.strip() for p in scene_text.split("\n\n") if p.strip()][:2]).strip()
+
         # Persist raw scene output for debugging/repro.
         write_text(out_dir / f"scene_{i:02d}.txt", scene_text + "\n")
 
-        # Update tail for continuity.
-        prev_tail = scene_text[-800:] if len(scene_text) > 800 else scene_text
+        # Update tail for continuity (short tail; for reference only).
+        prev_tail = scene_text[-220:] if len(scene_text) > 220 else scene_text
         scene_texts.append(scene_text)
 
     chapter_text = "\n\n".join([t for t in scene_texts if t]).strip() + "\n"

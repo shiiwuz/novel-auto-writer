@@ -47,6 +47,20 @@ Optional:
 - `NOVEL_DB_PATH` (default: `./data/novels.db`)
 - `NOVEL_OUTPUTS_DIR` (default: `./outputs`)
 
+## Quickstart (uv)
+
+This project is stdlib-only (no third-party Python deps), but we still recommend using `uv` to manage the virtualenv and Python version.
+
+```bash
+cd projects/novel-writer-cli
+
+# Create a local venv
+uv venv
+
+# Run the CLI inside the venv (env vars can come from ./.env if you `source` it)
+uv run python -m novel_writer --help
+```
+
 ## Quickstart (local)
 
 ```bash

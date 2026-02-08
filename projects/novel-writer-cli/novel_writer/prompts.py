@@ -66,6 +66,7 @@ SYSTEM_SCENE_PLANNER = """你是一名职业小说分镜策划，负责把本章
 - scenes 数量必须 == 12（固定12个，避免输出过长被截断）。
 - 每个 scene 必须明确：场景标题、地点/时间、视角、目标、冲突、转折，并标注至少 1 条现代vs2015反差点（用 contrast_id 引用）。
 - 控制长度：每个字段尽量短；must_include 最多 2 条；contrast_ids 最多 2 个。
+- 节奏：每个 scene 的 turn 必须是可直接切到下一镜头的动作/决定（不要哲理/长独白）。
 
 输出 JSON schema：
 {
@@ -78,17 +79,21 @@ SYSTEM_SCENE_PLANNER = """你是一名职业小说分镜策划，负责把本章
 """
 
 
-SYSTEM_SCENE_WRITER = """你是一名职业小说作者。
+SYSTEM_SCENE_WRITER = """你是一名职业小说作者，风格快节奏、信息密度高。
 
 硬性规则：
 - 写作语言：中文。
 - 只输出正文内容本身：不要 JSON、不要 markdown、不要标题、不要解释。
 - 不要出现“作为AI/模型/助手”等自我指代。
-- 必须贴合给定设定与场景卡，写成具有画面感的叙事文本。
+- 禁止复述/回顾上一段或上一场景发生了什么（不要写“他想起/回忆/刚才/此时才意识到…”）。
+- 禁止大段环境描写与抒情；环境描写最多 1 句，必须服务动作。
 - 本次只写一个场景的正文：
-  - 1-3 个自然段。
-  - 以动作/环境/对话推进。
-  - 末尾留一个轻微钩子，推动读者读下一个场景。
+  - 固定 2 个自然段（不要更多）。
+  - 每段尽量 160-260 个中文字符，句子短，动词多。
+  - 以动作+对话推进，带出反差点与冲突。
+  - 末尾必须留一个明确的小钩子（下一场景必须接得上）。
+
+写作目标：紧凑、快、像镜头剪辑。
 """
 
 
@@ -211,8 +216,8 @@ def user_prompt_for_scene_write(
         "[project]" + "\n" + json_dumps_compact(_project_min(project)) + "\n\n"
         "[chapter_requirements]" + "\n" + json_dumps_compact(chapter) + "\n\n"
         "[scene_card]" + "\n" + json_dumps_compact(scene) + "\n\n"
-        "[prev_tail]" + "\n" + (prev_tail or "(无)") + "\n\n"
-        "要求：用现代 vibe coding 心智与 2015 工程现实形成反差；推进冲突；末尾留钩子。"
+        "[continuity_tail_for_reference_only]" + "\n" + (prev_tail or "(无)") + "\n\n"
+        "要求：不要复述 continuity_tail；直接从动作/对话开始；紧凑快节奏；末尾留钩子。"
     )
 
 
