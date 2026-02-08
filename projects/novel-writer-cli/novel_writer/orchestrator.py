@@ -124,13 +124,14 @@ def generate_chapter(
             scene=scene,
             prev_tail=prev_tail,
         )
+        # Let the model have enough budget to avoid truncation; prompt still enforces tight output.
         resp = client.chat_completions(
             model=env.novel_writer_model,
             system=SYSTEM_SCENE_WRITER,
             user=scene_user,
             temperature=0.6,
-            max_tokens=650,
-            extra={"max_completion_tokens": 650},
+            max_tokens=5000,
+            extra={"max_completion_tokens": 5000},
         )
         scene_text = client.get_text(resp).strip()
 
