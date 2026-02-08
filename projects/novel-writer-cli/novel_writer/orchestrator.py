@@ -135,8 +135,22 @@ def generate_chapter(
         )
         scene_text = client.get_text(resp).strip()
 
-        # Keep output tight even if the model rambles.
-        scene_text = "\n\n".join([p.strip() for p in scene_text.split("\n\n") if p.strip()][:2]).strip()
+        # Basic richness guard: if the scene is too short, ask once to expand.
+        if len(scene_text) < 500:
+            expand_user = (
+                scene_user
+                + "\n\n"
+                + "补充要求：这段太短了。请扩写到 >= 700 个中文字符，增加动作与对话细节，但不要复述上一段。"
+            )
+            resp2 = client.chat_completions(
+                model=env.novel_writer_model,
+                system=SYSTEM_SCENE_WRITER,
+                user=expand_user,
+                temperature=0.6,
+                max_tokens=5000,
+                extra={"max_completion_tokens": 5000},
+            )
+            scene_text = client.get_text(resp2).strip()
 
         # Persist raw scene output for debugging/repro.
         write_text(out_dir / f"scene_{i:02d}.txt", scene_text + "\n")
